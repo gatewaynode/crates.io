@@ -8,7 +8,6 @@ use crate::views::EncodableKeyword;
 pub fn index(req: &mut dyn RequestExt) -> EndpointResult {
     use crate::schema::keywords;
 
-    let conn = req.db_conn()?;
     let query = req.query();
     let sort = query.get("sort").map(|s| &s[..]).unwrap_or("alpha");
 
@@ -20,9 +19,11 @@ pub fn index(req: &mut dyn RequestExt) -> EndpointResult {
         query = query.order(keywords::keyword.asc());
     }
 
-    let data: Paginated<Keyword> = query.paginate(&req.query())?.load(&*conn)?;
+    let query = query.paginate(req)?;
+    let conn = req.db_read_only()?;
+    let data: Paginated<Keyword> = query.load(&*conn)?;
     let total = data.total();
-    let kws = data.into_iter().map(Keyword::encodable).collect::<Vec<_>>();
+    let kws = data.into_iter().map(Keyword::into).collect::<Vec<_>>();
 
     #[derive(Serialize)]
     struct R {
@@ -36,14 +37,14 @@ pub fn index(req: &mut dyn RequestExt) -> EndpointResult {
 
     Ok(req.json(&R {
         keywords: kws,
-        meta: Meta { total },
+        meta: Meta { total: Some(total) },
     }))
 }
 
 /// Handles the `GET /keywords/:keyword_id` route.
 pub fn show(req: &mut dyn RequestExt) -> EndpointResult {
     let name = &req.params()["keyword_id"];
-    let conn = req.db_conn()?;
+    let conn = req.db_read_only()?;
 
     let kw = Keyword::find_by_keyword(&conn, name)?;
 
@@ -51,7 +52,5 @@ pub fn show(req: &mut dyn RequestExt) -> EndpointResult {
     struct R {
         keyword: EncodableKeyword,
     }
-    Ok(req.json(&R {
-        keyword: kw.encodable(),
-    }))
+    Ok(req.json(&R { keyword: kw.into() }))
 }

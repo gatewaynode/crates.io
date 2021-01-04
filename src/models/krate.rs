@@ -3,10 +3,10 @@ use diesel::associations::Identifiable;
 use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::sql_types::Bool;
-use indexmap::IndexMap;
 use url::Url;
 
 use crate::app::App;
+use crate::controllers::helpers::pagination::*;
 use crate::email;
 use crate::models::version::TopVersions;
 use crate::models::{
@@ -342,7 +342,7 @@ impl Crate {
         };
         let keyword_ids = keywords.map(|kws| kws.iter().map(|kw| kw.keyword.clone()).collect());
         let category_ids = categories.map(|cats| cats.iter().map(|cat| cat.slug.clone()).collect());
-        let badges = badges.map(|bs| bs.into_iter().map(Badge::encodable).collect());
+        let badges = badges.map(|bs| bs.into_iter().map(Badge::into).collect());
         let documentation = Crate::remove_blocked_documentation_urls(documentation);
 
         EncodableCrate {
@@ -519,20 +519,14 @@ impl Crate {
     }
 
     /// Returns (dependency, dependent crate name, dependent crate downloads)
-    pub fn reverse_dependencies(
+    pub(crate) fn reverse_dependencies(
         &self,
         conn: &PgConnection,
-        params: &IndexMap<String, String>,
+        options: PaginationOptions,
     ) -> AppResult<(Vec<ReverseDependency>, i64)> {
-        use crate::controllers::helpers::pagination::*;
         use diesel::sql_query;
         use diesel::sql_types::{BigInt, Integer};
 
-        // FIXME: It'd be great to support this with `.paginate` directly,
-        // and get cursor/id pagination for free. But Diesel doesn't currently
-        // have great support for abstracting over "Is this using `Queryable`
-        // or `QueryableByName` to load things?"
-        let options = PaginationOptions::new(params)?;
         let offset = options.offset().unwrap_or_default();
         let rows: Vec<WithCount<ReverseDependency>> =
             sql_query(include_str!("krate_reverse_dependencies.sql"))

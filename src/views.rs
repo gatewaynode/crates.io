@@ -1,13 +1,23 @@
 use chrono::NaiveDateTime;
 use std::collections::HashMap;
 
-use crate::models::DependencyKind;
+use crate::github;
+use crate::models::{
+    Badge, Category, CreatedApiToken, DependencyKind, Keyword, Owner, Team, User, VersionDownload,
+};
 use crate::util::rfc3339;
 
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct EncodableBadge {
     pub badge_type: String,
     pub attributes: HashMap<String, Option<String>>,
+}
+
+impl From<Badge> for EncodableBadge {
+    fn from(badge: Badge) -> Self {
+        // The serde attributes on Badge ensure it can be deserialized to EncodableBadge
+        serde_json::from_value(serde_json::to_value(badge).unwrap()).unwrap()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -19,6 +29,27 @@ pub struct EncodableCategory {
     #[serde(with = "rfc3339")]
     pub created_at: NaiveDateTime,
     pub crates_cnt: i32,
+}
+
+impl From<Category> for EncodableCategory {
+    fn from(category: Category) -> Self {
+        let Category {
+            crates_cnt,
+            category,
+            slug,
+            description,
+            created_at,
+            ..
+        } = category;
+        Self {
+            id: slug.clone(),
+            slug,
+            description,
+            created_at,
+            crates_cnt,
+            category: category.rsplit("::").collect::<Vec<_>>()[0].to_string(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,6 +102,16 @@ pub struct EncodableVersionDownload {
     pub date: String,
 }
 
+impl From<VersionDownload> for EncodableVersionDownload {
+    fn from(download: VersionDownload) -> Self {
+        Self {
+            version: download.version_id,
+            downloads: download.downloads,
+            date: download.date.to_string(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EncodableKeyword {
     pub id: String,
@@ -78,6 +119,23 @@ pub struct EncodableKeyword {
     #[serde(with = "rfc3339")]
     pub created_at: NaiveDateTime,
     pub crates_cnt: i32,
+}
+
+impl From<Keyword> for EncodableKeyword {
+    fn from(keyword: Keyword) -> Self {
+        let Keyword {
+            crates_cnt,
+            keyword,
+            created_at,
+            ..
+        } = keyword;
+        Self {
+            id: keyword.clone(),
+            created_at,
+            crates_cnt,
+            keyword,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -126,6 +184,47 @@ pub struct EncodableOwner {
     pub avatar: Option<String>,
 }
 
+impl From<Owner> for EncodableOwner {
+    fn from(owner: Owner) -> Self {
+        match owner {
+            Owner::User(User {
+                id,
+                name,
+                gh_login,
+                gh_avatar,
+                ..
+            }) => {
+                let url = format!("https://github.com/{}", gh_login);
+                Self {
+                    id,
+                    login: gh_login,
+                    avatar: gh_avatar,
+                    url: Some(url),
+                    name,
+                    kind: String::from("user"),
+                }
+            }
+            Owner::Team(Team {
+                id,
+                name,
+                login,
+                avatar,
+                ..
+            }) => {
+                let url = github::team_url(&login);
+                Self {
+                    id,
+                    login,
+                    url: Some(url),
+                    avatar,
+                    name,
+                    kind: String::from("team"),
+                }
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Debug)]
 pub struct EncodableTeam {
     pub id: i32,
@@ -133,6 +232,27 @@ pub struct EncodableTeam {
     pub name: Option<String>,
     pub avatar: Option<String>,
     pub url: Option<String>,
+}
+
+impl From<Team> for EncodableTeam {
+    fn from(team: Team) -> Self {
+        let Team {
+            id,
+            name,
+            login,
+            avatar,
+            ..
+        } = team;
+        let url = github::team_url(&login);
+
+        EncodableTeam {
+            id,
+            login,
+            name,
+            avatar,
+            url: Some(url),
+        }
+    }
 }
 
 /// The serialization format for the `ApiToken` model with its token value.
@@ -148,6 +268,19 @@ pub struct EncodableApiTokenWithToken {
     pub created_at: NaiveDateTime,
     #[serde(with = "rfc3339::option")]
     pub last_used_at: Option<NaiveDateTime>,
+}
+
+impl From<CreatedApiToken> for EncodableApiTokenWithToken {
+    fn from(token: CreatedApiToken) -> Self {
+        EncodableApiTokenWithToken {
+            id: token.model.id,
+            name: token.model.name,
+            token: token.plaintext,
+            revoked: token.model.revoked,
+            created_at: token.model.created_at,
+            last_used_at: token.model.last_used_at,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -187,6 +320,27 @@ pub struct EncodablePublicUser {
     pub name: Option<String>,
     pub avatar: Option<String>,
     pub url: Option<String>,
+}
+
+/// Converts a `User` model into an `EncodablePublicUser` for JSON serialization.
+impl From<User> for EncodablePublicUser {
+    fn from(user: User) -> Self {
+        let User {
+            id,
+            name,
+            gh_login,
+            gh_avatar,
+            ..
+        } = user;
+        let url = format!("https://github.com/{}", gh_login);
+        EncodablePublicUser {
+            id,
+            avatar: gh_avatar,
+            login: gh_login,
+            name,
+            url: Some(url),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug)]

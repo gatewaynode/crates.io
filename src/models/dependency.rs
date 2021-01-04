@@ -7,6 +7,11 @@ use crate::models::{Crate, Version};
 use crate::schema::*;
 use crate::views::{EncodableCrateDependency, EncodableDependency};
 
+pub const WILDCARD_ERROR_MESSAGE: &str = "wildcard (`*`) dependency constraints are not allowed \
+     on crates.io. See https://doc.rust-lang.org/cargo/faq.html#can-\
+     libraries-use--as-a-version-for-their-dependencies for more \
+     information";
+
 #[derive(Identifiable, Associations, Debug, Queryable, QueryableByName)]
 #[belongs_to(Version)]
 #[belongs_to(Crate)]
@@ -15,7 +20,7 @@ pub struct Dependency {
     pub id: i32,
     pub version_id: i32,
     pub crate_id: i32,
-    pub req: semver::VersionReq,
+    pub req: String,
     pub optional: bool,
     pub default_features: bool,
     pub features: Vec<String>,
@@ -26,12 +31,12 @@ pub struct Dependency {
 #[derive(Debug, QueryableByName)]
 pub struct ReverseDependency {
     #[diesel(embed)]
-    dependency: Dependency,
+    pub dependency: Dependency,
     #[sql_type = "::diesel::sql_types::Integer"]
-    crate_downloads: i32,
+    pub crate_downloads: i32,
     #[sql_type = "::diesel::sql_types::Text"]
     #[column_name = "crate_name"]
-    name: String,
+    pub name: String,
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize, Debug, FromSqlRow)]
@@ -51,7 +56,7 @@ impl Dependency {
             id: self.id,
             version_id: self.version_id,
             crate_id: crate_name.into(),
-            req: self.req.to_string(),
+            req: self.req,
             optional: self.optional,
             default_features: self.default_features,
             features: self.features,
@@ -90,13 +95,8 @@ pub fn add_dependencies(
             let krate:Crate = Crate::by_exact_name(&dep.name)
                 .first(&*conn)
                 .map_err(|_| cargo_err(&format_args!("no known crate named `{}`", &*dep.name)))?;
-            if dep.version_req == semver::VersionReq::parse("*").unwrap() {
-                return Err(cargo_err(
-                    "wildcard (`*`) dependency constraints are not allowed \
-                     on crates.io. See https://doc.rust-lang.org/cargo/faq.html#can-\
-                     libraries-use--as-a-version-for-their-dependencies for more \
-                     information",
-                ));
+            if semver::VersionReq::parse(&dep.version_req.0) == semver::VersionReq::parse("*") {
+                return Err(cargo_err(WILDCARD_ERROR_MESSAGE));
             }
 
             // If this dependency has an explicit name in `Cargo.toml` that

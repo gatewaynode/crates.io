@@ -7,13 +7,9 @@ use crate::views::EncodableOwner;
 /// Handles the `GET /crates/:crate_id/owners` route.
 pub fn owners(req: &mut dyn RequestExt) -> EndpointResult {
     let crate_name = &req.params()["crate_id"];
-    let conn = req.db_conn()?;
+    let conn = req.db_read_only()?;
     let krate: Crate = Crate::by_name(crate_name).first(&*conn)?;
-    let owners = krate
-        .owners(&conn)?
-        .into_iter()
-        .map(Owner::encodable)
-        .collect();
+    let owners = krate.owners(&conn)?.into_iter().map(Owner::into).collect();
 
     #[derive(Serialize)]
     struct R {
@@ -25,11 +21,11 @@ pub fn owners(req: &mut dyn RequestExt) -> EndpointResult {
 /// Handles the `GET /crates/:crate_id/owner_team` route.
 pub fn owner_team(req: &mut dyn RequestExt) -> EndpointResult {
     let crate_name = &req.params()["crate_id"];
-    let conn = req.db_conn()?;
+    let conn = req.db_read_only()?;
     let krate: Crate = Crate::by_name(crate_name).first(&*conn)?;
     let owners = Team::owning(&krate, &conn)?
         .into_iter()
-        .map(Owner::encodable)
+        .map(Owner::into)
         .collect();
 
     #[derive(Serialize)]
@@ -42,11 +38,11 @@ pub fn owner_team(req: &mut dyn RequestExt) -> EndpointResult {
 /// Handles the `GET /crates/:crate_id/owner_user` route.
 pub fn owner_user(req: &mut dyn RequestExt) -> EndpointResult {
     let crate_name = &req.params()["crate_id"];
-    let conn = req.db_conn()?;
+    let conn = req.db_read_only()?;
     let krate: Crate = Crate::by_name(crate_name).first(&*conn)?;
     let owners = User::owning(&krate, &conn)?
         .into_iter()
-        .map(Owner::encodable)
+        .map(Owner::into)
         .collect();
 
     #[derive(Serialize)]

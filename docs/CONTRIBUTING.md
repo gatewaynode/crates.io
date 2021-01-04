@@ -348,7 +348,7 @@ Build and start the server by running this command (you'll need to stop this
 with `CTRL-C` and rerun this command every time you change the backend code):
 
 ```
-cargo run --bin server
+cargo run
 ```
 
 Then start the background worker (which will process uploaded READMEs):
@@ -527,6 +527,9 @@ services:
       GH_CLIENT_ID: blahblah_ID
       GH_CLIENT_SECRET: blahblah_secret
 ```
+
+These environment variables can also be defined in a local `.env` file, see `.env.sample`
+for various configuration options. 
 
 #### Accessing services
 

@@ -33,6 +33,7 @@ use cargo_registry::{
     App, Config,
 };
 use diesel::PgConnection;
+use serde_json::Value;
 use std::{marker::PhantomData, rc::Rc, sync::Arc, time::Duration};
 use swirl::Runner;
 
@@ -45,6 +46,14 @@ use git2::Repository as UpstreamRepository;
 use url::Url;
 
 pub use conduit::{header, StatusCode};
+
+pub fn init_logger() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .without_time()
+        .with_test_writer()
+        .try_init();
+}
 
 struct TestAppInner {
     app: Arc<App>,
@@ -91,6 +100,8 @@ pub struct TestApp(Rc<TestAppInner>);
 impl TestApp {
     /// Initialize an application with an `Uploader` that panics
     pub fn init() -> TestAppBuilder {
+        init_logger();
+
         TestAppBuilder {
             config: crate::simple_config(),
             proxy: None,
@@ -553,22 +564,6 @@ pub struct Error {
     pub detail: String,
 }
 
-#[derive(Deserialize)]
-pub struct Bad {
-    pub errors: Vec<Error>,
-}
-
-impl Bad {
-    pub fn assert_error(&self, expected: &str) {
-        assert_eq!(
-            1,
-            self.errors.len(),
-            "the number of errors in this response is not 1"
-        );
-        assert_eq!(expected, self.errors[0].detail);
-    }
-}
-
 /// A type providing helper methods for working with responses
 #[must_use]
 pub struct Response<T> {
@@ -587,6 +582,11 @@ where
         }
     }
 
+    #[track_caller]
+    pub fn json(mut self) -> Value {
+        crate::json(&mut self.response)
+    }
+
     /// Assert that the response is good and deserialize the message
     #[track_caller]
     pub fn good(mut self) -> T {
@@ -594,18 +594,6 @@ where
             panic!("bad response: {:?}", self.response.status());
         }
         crate::json(&mut self.response)
-    }
-
-    /// Assert the response status code and deserialze into a list of errors
-    ///
-    /// Cargo endpoints return a status 200 on error instead of 400.
-    #[track_caller]
-    pub fn bad_with_status(&mut self, expected: StatusCode) -> Bad {
-        assert_eq!(self.response.status(), expected);
-        match crate::bad_resp(&mut self.response) {
-            None => panic!("ok response: {:?}", self.response.status()),
-            Some(b) => b,
-        }
     }
 
     #[track_caller]

@@ -7,18 +7,18 @@ use crate::views::{EncodableCategory, EncodableCategoryWithSubcategories};
 
 /// Handles the `GET /categories` route.
 pub fn index(req: &mut dyn RequestExt) -> EndpointResult {
-    let conn = req.db_conn()?;
     let query = req.query();
     // FIXME: There are 69 categories, 47 top level. This isn't going to
     // grow by an OoM. We need a limit for /summary, but we don't need
     // to paginate this.
-    let options = PaginationOptions::new(&query)?;
+    let options = PaginationOptions::new(req)?;
     let offset = options.offset().unwrap_or_default();
     let sort = query.get("sort").map_or("alpha", String::as_str);
 
+    let conn = req.db_read_only()?;
     let categories =
         Category::toplevel(&conn, sort, i64::from(options.per_page), i64::from(offset))?;
-    let categories = categories.into_iter().map(Category::encodable).collect();
+    let categories = categories.into_iter().map(Category::into).collect();
 
     // Query for the total count of categories
     let total = Category::count_toplevel(&conn)?;
@@ -42,20 +42,20 @@ pub fn index(req: &mut dyn RequestExt) -> EndpointResult {
 /// Handles the `GET /categories/:category_id` route.
 pub fn show(req: &mut dyn RequestExt) -> EndpointResult {
     let slug = &req.params()["category_id"];
-    let conn = req.db_conn()?;
+    let conn = req.db_read_only()?;
     let cat: Category = Category::by_slug(slug).first(&*conn)?;
     let subcats = cat
         .subcategories(&conn)?
         .into_iter()
-        .map(Category::encodable)
+        .map(Category::into)
         .collect();
     let parents = cat
         .parent_categories(&conn)?
         .into_iter()
-        .map(Category::encodable)
+        .map(Category::into)
         .collect();
 
-    let cat = cat.encodable();
+    let cat = EncodableCategory::from(cat);
     let cat_with_subcats = EncodableCategoryWithSubcategories {
         id: cat.id,
         category: cat.category,
@@ -78,7 +78,7 @@ pub fn show(req: &mut dyn RequestExt) -> EndpointResult {
 
 /// Handles the `GET /category_slugs` route.
 pub fn slugs(req: &mut dyn RequestExt) -> EndpointResult {
-    let conn = req.db_conn()?;
+    let conn = req.db_read_only()?;
     let slugs = categories::table
         .select((categories::slug, categories::slug, categories::description))
         .order(categories::slug)
